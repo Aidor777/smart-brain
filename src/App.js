@@ -9,6 +9,8 @@ import Logo from "./components/Logo/Logo";
 import ImageLinkForm from "./components/ImageLinkForm/ImageLinkForm";
 import Rank from "./components/Rank/Rank";
 import "./App.css";
+import Profile from "./components/Profile/Profile";
+import Modal from "./components/Modal/Modal";
 
 const initialState = {
   input: "",
@@ -16,12 +18,15 @@ const initialState = {
   boxes: [],
   route: "signin",
   isSignedIn: false,
+  isProfileOpen: false,
   user: {
     id: "",
     name: "",
     email: "",
     entries: 0,
     joined: "",
+    age: "",
+    pet: "",
   },
 };
 
@@ -29,6 +34,39 @@ class App extends Component {
   constructor() {
     super();
     this.state = initialState;
+  }
+
+  componentDidMount() {
+    const token = window.sessionStorage.getItem("token");
+    if (token) {
+      fetch("http://localhost:3000/signin", {
+        method: "post",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: token,
+        },
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data && data.id) {
+            fetch(`http://localhost:3000/profile/${data.id}`, {
+              method: "get",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: token,
+              },
+            })
+              .then((res) => res.json())
+              .then((user) => {
+                if (user && user.id) {
+                  this.loadUser(user);
+                  this.onRouteChange("home");
+                }
+              });
+          }
+        })
+        .catch(console.error);
+    }
   }
 
   loadUser = (data) => {
@@ -39,6 +77,8 @@ class App extends Component {
         email: data.email,
         entries: data.entries,
         joined: data.joined,
+        age: data.age,
+        pet: data.pet,
       },
     });
   };
@@ -50,16 +90,18 @@ class App extends Component {
 
     const result = [];
 
-    data.outputs[0].data.regions.forEach(region => {
-      const clarifaiFace = region.region_info.bounding_box;
+    if (data && data.outputs) {
+      data.outputs[0].data.regions.forEach((region) => {
+        const clarifaiFace = region.region_info.bounding_box;
 
-      result.push({
-        leftCol: clarifaiFace.left_col * width,
-        topRow: clarifaiFace.top_row * height,
-        rightCol: width - clarifaiFace.right_col * width,
-        bottomRow: height - clarifaiFace.bottom_row * height
+        result.push({
+          leftCol: clarifaiFace.left_col * width,
+          topRow: clarifaiFace.top_row * height,
+          rightCol: width - clarifaiFace.right_col * width,
+          bottomRow: height - clarifaiFace.bottom_row * height,
+        });
       });
-    });
+    }
 
     return result;
   };
@@ -76,7 +118,10 @@ class App extends Component {
     this.setState({ imageUrl: this.state.input });
     fetch("http://localhost:3000/imageurl", {
       method: "post",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: window.sessionStorage.getItem("token"),
+      },
       body: JSON.stringify({
         input: this.state.input,
       }),
@@ -86,7 +131,10 @@ class App extends Component {
         if (response) {
           fetch("http://localhost:3000/image", {
             method: "put",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: window.sessionStorage.getItem("token"),
+            },
             body: JSON.stringify({
               id: this.state.user.id,
             }),
@@ -104,22 +152,42 @@ class App extends Component {
 
   onRouteChange = (route) => {
     if (route === "signout") {
+      window.sessionStorage.removeItem('token');
       this.setState(initialState);
+      return;
     } else if (route === "home") {
       this.setState({ isSignedIn: true });
     }
     this.setState({ route: route });
   };
 
+  toggleModal = () => {
+    this.setState((prevState) => ({
+      ...prevState,
+      isProfileOpen: !prevState.isProfileOpen,
+    }));
+  };
+
   render() {
-    const { isSignedIn, imageUrl, route, boxes } = this.state;
+    const { isSignedIn, imageUrl, route, boxes, isProfileOpen, user } =
+      this.state;
     return (
       <div className="App">
         <ParticlesBg type="circle" bg={true} />
         <Navigation
           isSignedIn={isSignedIn}
           onRouteChange={this.onRouteChange}
+          toggleModal={this.toggleModal}
         />
+        {isProfileOpen && (
+          <Modal>
+            <Profile
+              toggleModal={this.toggleModal}
+              user={user}
+              loadUser={this.loadUser}
+            />
+          </Modal>
+        )}
         {route === "home" ? (
           <div>
             <Logo />
